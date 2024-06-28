@@ -1,6 +1,7 @@
 import os
 import random
 import zipfile
+import sklearn
 import shutil
 from PIL import Image, ImageEnhance, ImageFilter
 from sklearn.model_selection import train_test_split
