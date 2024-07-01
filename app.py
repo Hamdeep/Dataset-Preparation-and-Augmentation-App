@@ -1,7 +1,6 @@
 import os
 import random
 import zipfile
-import sklearn
 import shutil
 from PIL import Image, ImageEnhance, ImageFilter
 from sklearn.model_selection import train_test_split
@@ -128,6 +127,33 @@ if 'augment_applied' not in st.session_state:
 if 'dataset_processed' not in st.session_state:
     st.session_state.dataset_processed = False
 
+# Initialize ratios
+if 'train_ratio' not in st.session_state:
+    st.session_state.train_ratio = 70
+
+if 'test_ratio' not in st.session_state:
+    st.session_state.test_ratio = 15
+
+if 'val_ratio' not in st.session_state:
+    st.session_state.val_ratio = 15
+
+def update_ratios(source):
+    if source == 'train' and st.session_state.train_ratio % 10 != 0:
+        st.session_state.train_ratio = round(st.session_state.train_ratio / 10) * 10
+
+    if source == 'train':
+        remaining = 100 - st.session_state.train_ratio
+        st.session_state.test_ratio = remaining // 2
+        st.session_state.val_ratio = remaining // 2
+    elif source == 'test':
+        st.session_state.val_ratio = st.session_state.test_ratio
+        st.session_state.train_ratio = 100 - 2 * st.session_state.test_ratio
+    elif source == 'val':
+        st.session_state.test_ratio = st.session_state.val_ratio
+        st.session_state.train_ratio = 100 - 2 * st.session_state.val_ratio
+
+
+
 uploaded_file = st.file_uploader("Upload a zip file", type="zip")
 
 if uploaded_file is not None:
@@ -151,34 +177,33 @@ if uploaded_file is not None:
             st.success("Augmentation applied successfully. Now, proceed to split the dataset.")
 
     if st.session_state.augment_applied or not augment:
-        with st.form(key='split_form'):
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                train_ratio = st.number_input('Train (%)', min_value=0, max_value=100, value=70)
-            with col2:
-                test_ratio = st.number_input('Test (%)', min_value=0, max_value=100, value=15)
-            with col3:
-                val_ratio = st.number_input('Validation (%)', min_value=0, max_value=100, value=15)
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.number_input('Train (%)', min_value=0, max_value=100, value=st.session_state.train_ratio, step=10, key='train_ratio', on_change=update_ratios, args=('train',))
+        with col2:
+            st.number_input('Test (%)', min_value=0, max_value=100, value=st.session_state.test_ratio, key='test_ratio', on_change=update_ratios, args=('test',))
+        with col3:
+            st.number_input('Validation (%)', min_value=0, max_value=100, value=st.session_state.val_ratio, key='val_ratio', on_change=update_ratios, args=('val',))
 
+        with st.form(key='split_form'):
             split_button = st.form_submit_button(label='Split Dataset')
 
-        if train_ratio + test_ratio + val_ratio != 100:
-            st.error("The sum of train, test, and validation percentages must equal 100.")
-        elif split_button:
-            augmentations = st.session_state.augmentations if augment else {}
-            output_dir = process_zip_file(uploaded_file, train_ratio, test_ratio, val_ratio, augmentations)
-            st.session_state.dataset_processed = True
-            st.session_state.output_dir = output_dir
+        if split_button:
+            if st.session_state.train_ratio + st.session_state.test_ratio + st.session_state.val_ratio != 100:
+                st.error("The sum of train, test, and validation percentages must equal 100.")
+            else:
+                augmentations = st.session_state.augmentations if augment else {}
+                output_dir = process_zip_file(uploaded_file, st.session_state.train_ratio, st.session_state.test_ratio, st.session_state.val_ratio, augmentations)
+                st.session_state.dataset_processed = True
+                st.session_state.output_dir = output_dir
 
 if st.session_state.dataset_processed:
     try:
-        # Create a zip file of the output directory
         output_zip_path = shutil.make_archive("prepared_dataset", 'zip', st.session_state.output_dir)
 
         with open(output_zip_path, 'rb') as f:
             st.download_button('Download prepared dataset', f, file_name='prepared_dataset.zip')
 
-        # Clean up output directories
         shutil.rmtree(st.session_state.output_dir)
 
     except FileNotFoundError:
